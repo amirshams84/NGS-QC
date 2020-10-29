@@ -2,10 +2,10 @@
 # Author: Amir Shams
 # Date: Septempber-25-2020
 # Email: amir.shams84@gmail.com
-# Project: Eric-QC
-# Aim: python script to build QC execution shell script
-# python Eric_QC.py Eric-QC_metadata.csv
-# swarm -g 50 -t 30 --time 04:00:00 --logdir ./logs/ --partition quick --sbatch "--mail-type=FAIL" -f Eric-QC_metadata_NGS_test_execution.swarm
+# Project: NGS-QC
+# Aim: python script to build NGS-QC execution shell script
+# python NGS-QC.py Eric-QC_metadata.csv
+# swarm -g 50 -t 30 --time 04:00:00 --logdir ./logs/ --partition quick --sbatch "--mail-type=FAIL" -f NGS-QC_metadata_NGS_test_execution.swarm
 # ################################### IMPORT ##################################### #
 
 
@@ -353,32 +353,47 @@ def build_sortmeRNA_script(study_metadata_Dict, study):
 	sortmerna_script += "#SORTMERNA\n"
 
 	SORTMERNA_DB = "/usr/local/apps/sortmeRNA/3.0.3/sortmerna-3.0.3/rRNA_databases"
+	SORTMERNA_DB = "/usr/local/apps/sortmeRNA/4.2.0/sortmerna-4.2.0/data/rRNA_databases"
 
 	LAYOUT = study_metadata_Dict[study]["layout"]
 	fastq_file_path_Dict = parse_datadir(study_metadata_Dict[study]["input"], study_metadata_Dict[study]["layout"])
-		
+	
+	
 	for each_sample in fastq_file_path_Dict:
 		##
+		bbtools_script = " module load bbtools; "
+		sortmerna_report_path = study_metadata_Dict[study]["output"] + "/" + study + "/sortmerna/" + each_sample
+
 		forward_fastq_path, reverse_fastq_path, unstranded_fastq_name = process_fastq_path(fastq_file_path_Dict[each_sample][0])
 		if LAYOUT == "paired":
 			#
-			sortmerna_layout_command_string = " --reads " + forward_fastq_path + " --reads " + reverse_fastq_path
+			bbtools_layout_script = "bbtools reformat -in1=" + forward_fastq_path + " -in2=" + reverse_fastq_path
+			bbtools_layout_script += " -out1=" + sortmerna_report_path + "/" + each_sample + "_subsample_R1.fastq.gz"
+			bbtools_layout_script += " -out2=" + sortmerna_report_path + "/" + each_sample + "_subsample_R2.fastq.gz"
+			bbtools_layout_script += " samplerate=0.05"
+			#
+			sortmerna_layout_command_string = " --reads " + sortmerna_report_path + "/" + each_sample + "_subsample_R1.fastq.gz" + " --reads " + sortmerna_report_path + "/" + each_sample + "_subsample_R2.fastq.gz"
 		else:
 			#
-			sortmerna_layout_command_string = " --reads " + forward_fastq_path
+			bbtools_layout_script = "bbtools reformat -in=" + forward_fastq_path
+			bbtools_layout_script += " -out=" + sortmerna_report_path + "/" + each_sample + "_subsample.fastq.gz"
+			bbtools_layout_script += " samplerate=0.05"
+			sortmerna_layout_command_string = " --reads " + sortmerna_report_path + "/" + each_sample + "_subsample.fastq.gz"
 		#
-		sortmerna_report_path = study_metadata_Dict[study]["output"] + "/" + study + "/sortmerna"
-		sortmerna_report = sortmerna_report_path + "/" + each_sample
+		bbtools_script += bbtools_layout_script + ";"
+		sortmerna_report = sortmerna_report_path + "/" + each_sample + "_rRNA"
 		sortmerna_log = sortmerna_report_path + "/" + each_sample + ".sortmerna.log"
-		sortmerna_sample_script = "mkdir -p {sortmerna_report_path}; module load sortmerna; sortmerna --threads $SLURM_CPUS_PER_TASK --log --aligned {sortmerna_report} ".format(sortmerna_report_path=sortmerna_report_path, sortmerna_report=sortmerna_report) + sortmerna_layout_command_string
+		sortmerna_sample_script = "mkdir -p {sortmerna_report_path};".format(sortmerna_report_path=sortmerna_report_path)
+		sortmerna_sample_script += bbtools_script
+		sortmerna_sample_script += " module load sortmerna; sortmerna --threads $SLURM_CPUS_PER_TASK -m 40000 -v --workdir {sortmerna_report_path} --aligned {sortmerna_report} ".format(sortmerna_report_path=sortmerna_report_path, sortmerna_report=sortmerna_report) + sortmerna_layout_command_string
 		sortmerna_sample_script += " --ref {sortmerna_DB}/silva-euk-28s-id98.fasta ".format(sortmerna_DB=SORTMERNA_DB)
-		sortmerna_sample_script += "--ref {sortmerna_DB}/rfam-5.8s-database-id98.fasta ".format(sortmerna_DB=SORTMERNA_DB)
-		sortmerna_sample_script += "--ref {sortmerna_DB}/silva-arc-16s-id95.fasta ".format(sortmerna_DB=SORTMERNA_DB)
-		sortmerna_sample_script += "--ref {sortmerna_DB}/silva-euk-18s-id95.fasta ".format(sortmerna_DB=SORTMERNA_DB)
-		sortmerna_sample_script += "--ref {sortmerna_DB}/rfam-5s-database-id98.fasta ".format(sortmerna_DB=SORTMERNA_DB)
-		sortmerna_sample_script += "--ref {sortmerna_DB}/silva-bac-23s-id98.fasta ".format(sortmerna_DB=SORTMERNA_DB)
-		sortmerna_sample_script += "--ref {sortmerna_DB}/silva-bac-16s-id90.fasta ".format(sortmerna_DB=SORTMERNA_DB)
-		sortmerna_sample_script += "--ref {sortmerna_DB}/silva-arc-23s-id98.fasta ".format(sortmerna_DB=SORTMERNA_DB)
+		#sortmerna_sample_script += "--ref {sortmerna_DB}/rfam-5.8s-database-id98.fasta ".format(sortmerna_DB=SORTMERNA_DB)
+		#sortmerna_sample_script += "--ref {sortmerna_DB}/silva-arc-16s-id95.fasta ".format(sortmerna_DB=SORTMERNA_DB)
+		#sortmerna_sample_script += "--ref {sortmerna_DB}/silva-euk-18s-id95.fasta ".format(sortmerna_DB=SORTMERNA_DB)
+		#sortmerna_sample_script += "--ref {sortmerna_DB}/rfam-5s-database-id98.fasta ".format(sortmerna_DB=SORTMERNA_DB)
+		#sortmerna_sample_script += "--ref {sortmerna_DB}/silva-bac-23s-id98.fasta ".format(sortmerna_DB=SORTMERNA_DB)
+		#sortmerna_sample_script += "--ref {sortmerna_DB}/silva-bac-16s-id90.fasta ".format(sortmerna_DB=SORTMERNA_DB)
+		#sortmerna_sample_script += "--ref {sortmerna_DB}/silva-arc-23s-id98.fasta ".format(sortmerna_DB=SORTMERNA_DB)
 		sortmerna_script += sortmerna_sample_script + " 1> {sortmerna_log} 2>&1 \n\n".format(sortmerna_log=sortmerna_log)
 	else:
 		##for each_sample in fastq_file_path_Dict:
@@ -388,6 +403,8 @@ def build_sortmeRNA_script(study_metadata_Dict, study):
 
 def build_multiqc_script(study_metadata_Dict, study):
 	"""
+	sed -i 's|<div class="mqc-section-plot"><div class="mqc_hcplot_plotgroup"><div class="hc-plot-wrapper"><div id="fastqc_sequence_duplication_levels_plot" class="hc-plot not_rendered hc-line-plot"><small>loading..</small></div></div></div>|<!--div class="mqc-section-plot"><div class="mqc_hcplot_plotgroup"><div class="hc-plot-wrapper"><div id="fastqc_sequence_duplication_levels_plot" class="hc-plot not_rendered hc-line-plot"><small>loading..</small></div></div></div-->|' NGS_test_multiqc_report.html >NGS_test_multiqc_report_dropped.html
+	sed -i 's|<div class="mqc-section-description"><p>The relative level of duplication found for every sequence.</p></div>|<div class="mqc-section-description"><p>[The calculation metric is inaccurate-ignored]The relative level of duplication found for every sequence.</p></div>|' NGS_test_multiqc_report_dropped.html
 	"""
 	multiqc_script = "#!/bin/bash\n"
 	multiqc_script += ""
@@ -400,7 +417,12 @@ def build_multiqc_script(study_metadata_Dict, study):
 	multiqc_script += "module load multiqc\n"
 	multiqc_script += "cd {multiqc_report_path}\n".format(multiqc_report_path=multiqc_report_path)
 	multiqc_script += "multiqc --force --exclude general_stats --filename {study}_multiqc_report . \n".format(study=study)
-		
+	multiqc_script += "##########################\n"
+	multiqc_script += "#customizing multiqc report\n"
+	multiqc_script += "module load python\n"
+	multiqc_script += 'python ' + python_pathname + '/customize_multiqc.py {study}_multiqc_report.html \n'.format(study=study)
+	#multiqc_script += 'sed -i \'s|<div class="mqc-section-description"><p>The relative level of duplication found for every sequence.</p></div>|<div class="mqc-section-description"><p>[The calculation method for this QC is inaccurate]The relative level of duplication found for every sequence.</p></div>|\' {study}_multiqc_report.html \n'.format(study=study)
+	
 	return multiqc_script
 # ################################### CONFIGURATION ############################## #
 
@@ -409,6 +431,11 @@ def build_multiqc_script(study_metadata_Dict, study):
 FORWARD_DELIMITER_LIST = ["_1", "_R1"]
 REVERSE_DELIMITER_LIST = ["_2", "_R2"]
 # ------------------------------------
+
+#print('sys.argv[0] =', sys.argv[0])
+python_pathname = os.path.dirname(sys.argv[0])
+#print('path =', pathname)
+#print('full path =', os.path.abspath(pathname))
 # ################################### EXEC ####################################### #
 
 samplesheet_Dict = parse_samplesheet_to_dict(sys.argv[1])
@@ -428,7 +455,7 @@ for each_study in study_metadata_Dict:
 	swarm_script_String += build_fastqc_script(study_metadata_Dict, each_study)
 	swarm_script_String += build_fastq_screen_script(study_metadata_Dict, each_study)
 	swarm_script_String += build_fastp_script(study_metadata_Dict, each_study)
-	#execution_script_String += build_sortmeRNA_script(study_metadata_Dict, each_study)
+	#swarm_script_String += build_sortmeRNA_script(study_metadata_Dict, each_study)
 	
 	swarm_file_name = sys.argv[1].replace(".csv", "_" + each_study + "_script.swarm")
 	with open(swarm_file_name, 'w') as execution_swarm:
@@ -440,9 +467,9 @@ for each_study in study_metadata_Dict:
 	with open(multiqc_file_name, 'w') as multiqc_sh:
 		multiqc_sh.write(multiqc_string)
 	
-	execution_script_string += "swarm_jobID=$(swarm -g 50 -t 30 --time 04:00:00 --logdir ./logs/ --partition quick --sbatch '--mail-type=FAIL' -f " + swarm_file_name + ")\n"
+	execution_script_string += "swarm_jobID=$(swarm -g 50 -t 30 --time 24:00:00 --logdir ./{study}/swarm_logs/ --partition norm --sbatch '--mail-type=FAIL' -f ".format(study=each_study) + swarm_file_name + ")\n"
 	
-	execution_script_string += "\n\nsbatch --mem=10G --cpus-per-task=10 --partition=quick --time=04:00:00 --dependency afterany:$swarm_jobID " + multiqc_file_name + "\n"
+	execution_script_string += "\n\nsbatch --mem=10G --cpus-per-task=10 --partition=norm --time=24:00:00 --dependency afterany:$swarm_jobID " + multiqc_file_name + "\n"
 
 	with open(sys.argv[1].replace(".csv", "_" + each_study + "_execution.sh"), 'w') as execution_script:
 		execution_script.write(execution_script_string)
